@@ -1,0 +1,80 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfile": "Dockerfile"
+  },
+  "deploy": {
+    "num_replicas": 1,
+    "restart_policy_type": "ON_FAILURE",
+    "restart_policy_max_retries": 10
+  },
+  "services": {
+    "backend": {
+      "build": {
+        "dockerfile": "backend/Dockerfile",
+        "context": "."
+      },
+      "start": {
+        "command": "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+      },
+      "healthcheck": {
+        "path": "/health",
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3
+      },
+      "volumes": [
+        {
+          "mountPath": "/data",
+          "size": 1024
+        }
+      ],
+      "environment": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CELERY_BROKER_URL",
+        "CELERY_RESULT_BACKEND",
+        "SECRET_KEY",
+        "GROQ_API_KEY",
+        "GROQ_MODEL",
+        "EMBEDDING_MODEL",
+        "CHROMA_PERSIST_DIR",
+        "UPLOAD_DIR",
+        "CORS_ORIGINS"
+      ]
+    },
+    "worker": {
+      "build": {
+        "dockerfile": "backend/Dockerfile",
+        "context": "."
+      },
+      "start": {
+        "command": "celery -A app.workers.celery_app worker --loglevel=info"
+      },
+      "depends_on": ["backend"],
+      "environment": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CELERY_BROKER_URL",
+        "CELERY_RESULT_BACKEND",
+        "GROQ_API_KEY",
+        "CHROMA_HOST",
+        "CHROMA_PORT"
+      ]
+    },
+    "frontend": {
+      "build": {
+        "dockerfile": "frontend/Dockerfile",
+        "context": "."
+      },
+      "start": {
+        "command": "node server.js"
+      },
+      "depends_on": ["backend"],
+      "environment": [
+        "NEXT_PUBLIC_API_URL"
+      ]
+    }
+  }
+}

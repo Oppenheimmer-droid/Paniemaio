@@ -1,0 +1,76 @@
+version: '3.8'
+
+# ===========================================
+# PRODUCTION — Railway Deployment
+# ===========================================
+
+services:
+  # ===========================================
+  # Backend API
+  # ===========================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: saas-edu-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL_SYNC=${DATABASE_URL_SYNC}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - SECRET_KEY=${SECRET_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - CHROMA_HOST=${CHROMA_HOST:-chromadb}
+      - CHROMA_PORT=${CHROMA_PORT:-8000}
+      - CHROMA_PERSIST_DIR=/data/chroma
+      - UPLOAD_DIR=/data/uploads
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - ENVIRONMENT=production
+      - DEBUG=false
+    volumes:
+      - chroma_data:/data/chroma
+      - uploads_data:/data/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: >
+      sh -c "alembic upgrade head && 
+             celery -A app.workers.celery_app worker --loglevel=info &
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # ===========================================
+  # Frontend
+  # ===========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: saas-edu-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  chroma_data:
+  uploads_data:
