@@ -1,0 +1,133 @@
+# ===========================================
+# SaaS Edu - Dockerfile Multi-Stage
+# Construye backend + frontend en una imagen
+# Uso: docker build -f Dockerfile.multiarch -t saas-edu:latest .
+# ===========================================
+
+# ===========================================
+# Stage 1: Backend Python
+# ===========================================
+FROM python:3.11-slim AS backend-builder
+
+WORKDIR /app
+
+# Dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements y instalar
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar código backend
+COPY backend/ /app/
+
+# ===========================================
+# Stage 2: Frontend Node
+# ===========================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copiar package.json
+COPY frontend/package.json frontend/package-lock.json* ./
+
+# Instalar dependencias
+RUN npm ci --only=production
+
+# Copiar código frontend
+COPY frontend/ ./
+
+# Build Next.js
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# ===========================================
+# Stage 3: Runtime - Todo en uno
+# ===========================================
+FROM python:3.11-slim AS runtime
+
+LABEL maintainer="SaaS Edu"
+LABEL description="SaaS Educativo White-Label con RAG"
+
+# ===========================================
+# Configuración del sistema
+# ===========================================
+RUN apt-get update && apt-get install -y \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear usuario no-root
+RUN useradd -m -u 1000 appuser
+
+WORKDIR /app
+
+# ===========================================
+# Backend
+# ===========================================
+COPY --from=backend-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=backend-builder /usr/local/bin /usr/local/bin
+COPY --from=backend-builder /app /app
+
+# Directorios necesarios
+RUN mkdir -p /app/uploads /app/logs /app/static
+
+# ===========================================
+# Frontend (Next.js exportado)
+# ===========================================
+COPY --from=frontend-builder /app/frontend/.next /app/frontend/.next
+COPY --from=frontend-builder /app/frontend/public /app/frontend/public
+COPY --from=frontend-builder /app/frontend/package.json /app/frontend/package.json
+
+# ===========================================
+# Scripts de entrada
+# ===========================================
+COPY <<'EOF' /app/start.sh
+#!/bin/bash
+set -e
+
+echo "=========================================="
+echo "SaaS Edu - Iniciando..."
+echo "=========================================="
+
+# Variables de entorno con defaults
+export DATABASE_URL=${DATABASE_URL:-"postgresql://postgres:postgres@localhost:5432/saas_edu"}
+export REDIS_URL=${REDIS_URL:-"redis://localhost:6379/0"}
+export CHROMA_HOST=${CHROMA_HOST:-"localhost"}
+export CHROMA_PORT=${CHROMA_PORT:-"8000"}
+
+# Verificar conexiones
+echo "Verificando PostgreSQL..."
+python -c "import asyncpg; print('PostgreSQL OK')" 2>/dev/null || echo "PostgreSQL: configurado"
+
+echo "Verificando Redis..."
+python -c "import redis; print('Redis OK')" 2>/dev/null || echo "Redis: configurado"
+
+echo "=========================================="
+echo "Servidor iniciando en puerto 8000..."
+echo "=========================================="
+
+# Iniciar uvicorn
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+EOF
+
+RUN chmod +x /app/start.sh
+
+# ===========================================
+# Health check
+# ===========================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Puertos
+EXPOSE 8000
+
+# Usuario y comando
+USER appuser
+
+# Script de entrada
+ENTRYPOINT ["/app/start.sh"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

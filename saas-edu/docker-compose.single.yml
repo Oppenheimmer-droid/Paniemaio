@@ -1,0 +1,159 @@
+# ===========================================
+# Docker Compose - Todo en uno
+# Construye y ejecuta toda la aplicación
+# Uso: docker-compose -f docker-compose.single.yml up --build
+# ===========================================
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: saas-edu-postgres
+    environment:
+      POSTGRES_DB: saas_edu
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================
+  # Redis Cache
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: saas-edu-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================
+  # ChromaDB Vector Database
+  # ===========================================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: saas-edu-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================
+  # Backend API (FastAPI)
+  # ===========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiarch
+    container_name: saas-edu-api
+    environment:
+      # Database
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/saas_edu
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: saas_edu
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      
+      # ChromaDB
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      
+      # JWT
+      SECRET_KEY: your-super-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      
+      # Groq LLM
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: llama-3.1-8b-instant
+      
+      # RAG
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      CHUNK_SIZE: 512
+      CHUNK_OVERLAP: 50
+      
+      # Upload
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE_MB: 50
+      
+      # CORS
+      BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://localhost:8000"]'
+      
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ===========================================
+  # Frontend (Next.js)
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: saas-edu-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+  uploads:
+  logs:
