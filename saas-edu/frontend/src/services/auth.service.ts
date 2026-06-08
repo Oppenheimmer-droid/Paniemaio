@@ -1,64 +1,38 @@
-/**
- * Servicio de autenticación para el frontend.
- */
-
+// saas-edu/frontend/src/services/auth.service.ts
 import api from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
-import type { AuthResponse, UserLogin, RegisterTenantRequest } from '@/types'
 
 export const authService = {
-  /**
-   * Login de usuario
-   */
-  async login(data: UserLogin): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>('/auth/login', data)
-    const authData = response.data
-    
-    // Guardar en store
-    const { login } = useAuthStore.getState()
-    login({
-      user: authData.user,
-      token: authData.access_token,
-      refresh_token: authData.refresh_token,
-      tenant: authData.tenant as any
+  async login(data: { email: string; password: string; tenant_slug: string }) {
+    const res = await api.post('/auth/login', data)
+    const d = res.data
+    useAuthStore.getState().login({
+      user: d.user,
+      token: d.access_token,
+      refresh_token: d.refresh_token,
+      tenant: d.tenant,
     })
-    
-    return authData
+    return d
   },
 
-  /**
-   * Registro de nuevo tenant
-   */
-  async register(data: RegisterTenantRequest): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>('/auth/register', data)
-    const authData = response.data
-    
-    // Guardar en store
-    const { login } = useAuthStore.getState()
-    login({
-      user: authData.user,
-      token: authData.access_token,
-      refresh_token: authData.refresh_token,
-      tenant: authData.tenant as any
+  async register(data: {
+    tenant_name: string; tenant_slug: string
+    admin_email: string; admin_password: string
+    admin_first_name: string; admin_last_name: string
+  }) {
+    const res = await api.post('/auth/register', data)
+    const d = res.data
+    useAuthStore.getState().login({
+      user: d.user,
+      token: d.access_token,
+      refresh_token: d.refresh_token,
+      tenant: d.tenant,
     })
-    
-    return authData
+    return d
   },
 
-  /**
-   * Refrescar token
-   */
-  async refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
-    const response = await api.post('/auth/refresh', { refresh_token: refreshToken })
-    return response.data
-  },
-
-  /**
-   * Logout
-   */
-  async logout(): Promise<void> {
+  async logout() {
     const { refreshToken } = useAuthStore.getState()
-    
     try {
       await api.post('/auth/logout', { refresh_token: refreshToken })
     } finally {
@@ -66,25 +40,10 @@ export const authService = {
     }
   },
 
-  /**
-   * Obtener usuario actual
-   */
-  async getMe(): Promise<AuthResponse['user']> {
-    const response = await api.get('/auth/me')
-    return response.data
+  async getMe() {
+    const res = await api.get('/auth/me')
+    return res.data
   },
-
-  /**
-   * Verificar si el usuario está autenticado
-   */
-  async checkAuth(): Promise<boolean> {
-    try {
-      await this.getMe()
-      return true
-    } catch {
-      return false
-    }
-  }
 }
 
 export default authService
