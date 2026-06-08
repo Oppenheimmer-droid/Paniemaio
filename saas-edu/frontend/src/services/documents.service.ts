@@ -3,7 +3,7 @@
  */
 
 import api from '@/lib/api'
-import type { Document, DocumentListResponse, DocumentStatusResponse } from '@/types'
+import type { Document } from '@/types'
 
 export interface UploadDocumentData {
   file: File
@@ -12,6 +12,20 @@ export interface UploadDocumentData {
   topic_id?: string
   description?: string
   difficulty?: number
+}
+
+export interface DocumentListResponse {
+  items: Document[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface DocumentStatusResponse {
+  document_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  chunk_count?: number
+  error_message?: string
 }
 
 export const documentsService = {

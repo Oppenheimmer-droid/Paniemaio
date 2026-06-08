@@ -3,7 +3,7 @@
  */
 
 import api from '@/lib/api'
-import type { ChatSession, ChatMessage, ChatQueryResponse } from '@/types'
+import type { ChatSession, ChatMessage } from '@/types'
 
 export interface CreateSessionData {
   title: string
@@ -14,6 +14,19 @@ export interface QueryData {
   question: string
   session_id?: string
   document_id?: string
+}
+
+export interface ChatQueryResponse {
+  answer: string
+  session_id: string
+  citations: Array<{
+    source: string
+    page: number | null
+    document_id: string
+    text: string
+  }>
+  tokens_used: number
+  latency_ms: number
 }
 
 export const chatService = {

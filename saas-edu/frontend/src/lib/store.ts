@@ -24,11 +24,13 @@ interface AuthState {
   refreshToken: string | null
   tenant: Tenant | null
   isAuthenticated: boolean
+  isAuthenticatedLoading: boolean
   
   // Actions
   login: (data: { user: User; token: string; refresh_token: string; tenant: Tenant }) => void
   logout: () => void
   updateUser: (user: Partial<User>) => void
+  setLoading: (loading: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -39,6 +41,7 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       tenant: null,
       isAuthenticated: false,
+      isAuthenticatedLoading: false,
       
       login: (data) => set({
         user: data.user,
@@ -46,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: data.refresh_token,
         tenant: data.tenant,
         isAuthenticated: true,
+        isAuthenticatedLoading: false,
       }),
       
       logout: () => set({
@@ -54,11 +58,14 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: null,
         tenant: null,
         isAuthenticated: false,
+        isAuthenticatedLoading: false,
       }),
       
       updateUser: (userData) => set((state) => ({
         user: state.user ? { ...state.user, ...userData } : null,
       })),
+      
+      setLoading: (loading) => set({ isAuthenticatedLoading: loading }),
     }),
     {
       name: 'saas-edu-auth',
