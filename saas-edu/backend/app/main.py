@@ -2,12 +2,35 @@
 """Main FastAPI Application — SaaS Educativo White-Label"""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.database import create_tables
+from app.core.database import create_tables, AsyncSessionLocal
+
+# ── Logging estructurado ─────────────────────────────────────────────────────
+import logging
+import json
+from datetime import datetime
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+        })
+
+def setup_logging():
+    handler = logging.StreamHandler()
+    handler.setFormatter(JSONFormatter())
+    logging.root.addHandler(handler)
+    logging.root.setLevel(logging.INFO)
+
+setup_logging()
 
 
 @asynccontextmanager
@@ -42,6 +65,7 @@ app.add_middleware(
 # ── Exception Handler ──────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Error: {exc}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -55,6 +79,31 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
+
+@app.get("/health/detailed", tags=["Health"])
+async def health_detailed():
+    """Health check detallado con estado de servicios."""
+    checks = {"api": "ok", "database": "unknown", "redis": "unknown"}
+    
+    # Check DB
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {str(e)}"
+    
+    # Check Redis
+    try:
+        import redis
+        r = redis.from_url(settings.REDIS_URL.replace('0', '6379') if ':6379/0' in settings.REDIS_URL else settings.REDIS_URL)
+        r.ping()
+        checks["redis"] = "ok"
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)}"
+    
+    status = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": status, "checks": checks, "version": "1.0.0"}
 
 @app.get("/", tags=["Root"])
 async def root():

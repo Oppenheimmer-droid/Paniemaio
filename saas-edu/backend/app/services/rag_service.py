@@ -8,7 +8,6 @@ import time
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 
-from groq import Groq
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +45,13 @@ class RAGService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
+        self._groq = None
+        if settings.GROQ_API_KEY:
+            try:
+                from groq import Groq
+                self._groq = Groq(api_key=settings.GROQ_API_KEY)
+            except Exception as e:
+                print(f"⚠️ Groq no disponible: {e}")
     
     async def create_session(
         self,
@@ -239,13 +244,21 @@ class RAGService:
         return citations
     
     def _call_groq(self, question: str, context: str) -> Tuple[str, int]:
-        """Llama a Groq LLM."""
+        """Llama a Groq LLM o devuelve respuesta dummy si no está disponible."""
+        if self._groq is None:
+            # Modo demo sin Groq
+            return (
+                f"[Modo demo] La pregunta '{question}' requeriría Groq para responderse. "
+                "Configure GROQ_API_KEY para habilitar el chat IA.",
+                0
+            )
+        
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"CONTEXTO:\n{context}\n\nPREGUNTA: {question}"}
         ]
         
-        response = self.groq_client.chat.completions.create(
+        response = self._groq.chat.completions.create(
             model=settings.GROQ_MODEL,
             messages=messages,
             temperature=0.3,
@@ -329,6 +342,17 @@ class RAGService:
             yield {"type": "done", "data": "No encontré información."}
             return
         
+        if self._groq is None:
+            # Modo demo sin Groq
+            demo_response = (
+                f"[Modo demo] La pregunta '{question}' requeriría Groq para responderse. "
+                "Configure GROQ_API_KEY para habilitar el chat IA."
+            )
+            for char in demo_response:
+                yield {"type": "chunk", "data": char}
+            yield {"type": "done", "data": demo_response}
+            return
+        
         context = self._build_context(chunks)
         
         # Call Groq con streaming
@@ -337,7 +361,7 @@ class RAGService:
             {"role": "user", "content": f"CONTEXTO:\n{context}\n\nPREGUNTA: {question}"}
         ]
         
-        response = self.groq_client.chat.completions.create(
+        response = self._groq.chat.completions.create(
             model=settings.GROQ_MODEL,
             messages=messages,
             temperature=0.3,

@@ -258,12 +258,3 @@ def _mark_document_failed(document_id: str, error_message: str):
         run_async(_mark())
     except Exception as e:
         print(f"Error marcando documento como fallido: {e}")
-
-
-# ===========================================
-# Queue definitions
-# ===========================================
-# documents: High priority, CPU intensive
-# evaluations: Medium priority, LLM calls
-document_queue = celery_app.collection["documents"]
-evaluation_queue = celery_app.collection["evaluations"]

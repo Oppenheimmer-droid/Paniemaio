@@ -4,6 +4,7 @@ Modelos de documentos, materias y topics.
 
 import uuid
 from datetime import datetime
+from enum import Enum as PyEnum
 
 from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 
-class DocumentStatus(str):
+class DocumentStatus(str, PyEnum):
     """Estado del documento."""
     PENDING = "pending"
     PROCESSING = "processing"
