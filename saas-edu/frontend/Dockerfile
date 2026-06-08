@@ -12,8 +12,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (install genera lockfile si no existe)
+RUN npm install --legacy-peer-deps
 
 # ===========================================
 # Rebuild the source code only when needed
